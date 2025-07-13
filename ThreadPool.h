@@ -85,7 +85,8 @@ inline auto ThreadPool::PushThread(Func&& func, Args&&... args) -> std::future<d
 			// 使用 std::invoke 替代直接调用，支持成员函数
 			return std::apply([&func](auto &&...args)
 							  { return std::invoke(func, std::forward<decltype(args)>(args)...); }, std::move(tup_args));
-		});
+		}
+	);
 
 	std::future<RetType> res = task->get_future();
 	//限制锁的作用域
