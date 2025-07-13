@@ -1,9 +1,13 @@
 #include <iostream>
+#include <windows.h>
+#include <string>
 #include "ThreadPool.h"
 
 int func1(int i)
 {
-    std::cout << i << std::endl;
+    std::string str = "Func1: " + i;
+    str += "\n";
+    std::cout << str;
     return i;
 }
 
@@ -12,7 +16,9 @@ class Test
 private:
 int Test1(int i)
 {
-    std::cout << "Test1: " << i << std::endl;
+    std::string str = "Test1: " + i;
+    str += "\n";
+    std::cout << str;
     return i;
 }
 private:
@@ -37,5 +43,6 @@ int main()
 {
     Test test;
     test.Run();
+    Sleep(3000);
     return 0;
 }
