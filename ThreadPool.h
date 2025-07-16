@@ -6,8 +6,8 @@
 #include <functional>
 #include <future>
 #include <condition_variable>
-#include <tuple>
-#include <type_traits>  // 添加必要的头文件
+#include <mutex>
+#include <memory>
 
 using ThreadPoolTask = std::function<void()>;
 
@@ -19,9 +19,9 @@ public:
 
     // 将线程存入线程池
 	template <typename Func, typename... Args>
-	auto PushThread(Func &&func, Args &&...args) -> std::future<decltype(std::invoke(std::forward<Func>(func), std::forward<Args>(args)...))>;
+	auto PushThread(Func &&func, Args &&...args) -> std::future<typename std::result_of<Func(Args...)>::type>;
 
-    // 等待线程池中所有线程运算完毕
+	// 等待线程池中所有线程运算完毕
     void vWaitAllThreadFinish();
 
     // 获取线程池中所有线程运算是否完毕
@@ -73,31 +73,25 @@ inline ThreadPool::~ThreadPool()
 }
 
 template <typename Func, typename... Args>
-inline auto ThreadPool::PushThread(Func&& func, Args&&... args) -> std::future<decltype(std::invoke(std::forward<Func>(func), std::forward<Args>(args)...))>
-{
-	using RetType = decltype(std::invoke(std::forward<Func>(func), std::forward<Args>(args)...));
-
-	// 使用 shared_ptr 包装任务
-	auto task = std::make_shared<std::packaged_task<RetType()>>(
-		[func = std::forward<Func>(func),
-		 tup_args = std::make_tuple(std::forward<Args>(args)...)]() mutable
-		{
-			// 使用 std::invoke 替代直接调用，支持成员函数
-			return std::apply([&func](auto &&...args)
-							  { return std::invoke(func, std::forward<decltype(args)>(args)...); }, std::move(tup_args));
-		}
-	);
-
-	std::future<RetType> res = task->get_future();
-	//限制锁的作用域
-	{
-		std::unique_lock<std::mutex> lock(m_mutexJob);
-		m_queueJob.push([task]()
-						{ (*task)(); });
-	}
-	m_Condition.notify_one();
-	return res;
-}
+inline auto ThreadPool::PushThread(Func&& func, Args&&... args) 
+        -> std::future<typename std::result_of<Func(Args...)>::type>
+    {
+        using ReturnType = typename std::result_of<Func(Args...)>::type;
+        using TaskType = std::packaged_task<ReturnType()>;
+        
+        // 使用 shared_ptr 管理任务
+        auto task = std::make_shared<TaskType>(
+            std::bind(std::forward<Func>(func), std::forward<Args>(args)...)
+        );
+        
+        std::future<ReturnType> res = task->get_future();
+        {
+            std::unique_lock<std::mutex> lock(m_mutexJob);
+            m_queueJob.push([task]() { (*task)(); });
+        }
+        m_Condition.notify_one();
+        return res;
+    }
 
 inline void ThreadPool::vThreadLoop()
 {
