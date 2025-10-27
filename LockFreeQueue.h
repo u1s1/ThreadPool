@@ -51,6 +51,7 @@ template <typename T>
 inline  LockFreeQueue<T>::~LockFreeQueue()
 {
     while (pop() != nullptr);
+    delete m_tail.load();
 }
 
 template <typename T>
@@ -126,10 +127,32 @@ inline void LockFreeQueue<T>::push(T &&value)
 template <typename T>
 inline void LockFreeQueue<T>::AddToDeleteWaitQueue(QueueNode *waitDeletePointer)
 {
+    QueueNode *oldWaitDeleteHead;
+    do
+    {
+        oldWaitDeleteHead = m_deleteWaitHead.load();
+        waitDeletePointer->next = oldWaitDeleteHead;
+    } while (m_deleteWaitHead.compare_exchange_weak(oldWaitDeleteHead, waitDeletePointer));
 }
 
 template <typename T>
 inline void LockFreeQueue<T>::DelteWaitQueue()
 {
+    QueueNode *waitDeleteHead = m_deleteWaitHead.exchange(nullptr);
+    QueueNode *waitDeleteHeadNext;
+    while (waitDeleteHead != nullptr)
+    {
+        waitDeleteHeadNext = waitDeleteHead->next;
+        if (m_hazardPointManager->IsConflictPoint((void*)waitDeleteHead))
+        {
+            AddToDeleteWaitQueue(waitDeleteHead);
+        }
+        else
+        {
+            delete waitDeleteHead;
+        }
+        waitDeleteHead = waitDeleteHeadNext;
+    }
 }
+
 #endif
