@@ -24,6 +24,7 @@ public:
 
     void push(const T &value);
     void push(T &&value);
+    int size();
 
 private:
     void AddToDeleteWaitQueue(QueueNode *waitDeletePointer);
@@ -122,6 +123,12 @@ inline void LockFreeQueue<T>::push(T &&value)
         newNode->next = oldTail;
     } while (!m_tail.compare_exchange_weak(oldTail, newNode));
     m_size.fetch_add(1);
+}
+
+template <typename T>
+inline int LockFreeQueue<T>::size()
+{
+    return m_size.load();
 }
 
 template <typename T>
