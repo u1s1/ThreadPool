@@ -91,11 +91,11 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
     //若要获取数据的真正节点是空则跳出，或者成功更新头节点到要获取数据的真正节点也跳出
     } while (returnNode != nullptr && !m_head.compare_exchange_weak(oldHead, returnNode));
 
+    //释放此线程持有的风险指针
+    thisThreadHazardPoint->hazardStorePoint.store(nullptr);
     if (returnNode != nullptr)
     {
         dataPointer = std::move(returnNode->data);
-        //释放此线程持有的风险指针
-        thisThreadHazardPoint->hazardStorePoint.store(nullptr);
         //查看其它线程是否持有此指针
         if (m_hazardPointManager->IsConflictPoint((void *)oldHead))
         {
