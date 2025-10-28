@@ -65,8 +65,8 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
     
     //获取当前线程下的风险指针
     HazardPoint *thisThreadHazardPoint = m_hazardPointManager->GetHazardPoint();
-    QueueNode *oldHead;
-    QueueNode *headNext;
+    QueueNode *oldHead = m_head.load();
+    QueueNode *tempNode;
     std::shared_ptr<T> dataPointer = nullptr;
 
     //外层do-while用于更新队列头
@@ -75,12 +75,11 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
         //内层do-while用于更新风险指针
         do
         {
+            tempNode = oldHead;
+            thisThreadHazardPoint->hazardStorePoint.store((void *)tempNode);
             oldHead = m_head.load();
-            headNext = oldHead->next;
-            thisThreadHazardPoint->hazardStorePoint.store((void *)oldHead);
-        } while (thisThreadHazardPoint->hazardStorePoint.load() != oldHead);
-    } while (!oldHead && !m_head.compare_exchange_weak(oldHead, headNext));
-    m_size.fetch_sub(1);
+        } while (tempNode != oldHead);
+    } while (oldHead != nullptr && !m_head.compare_exchange_weak(oldHead, oldHead->next));
 
     if (oldHead != nullptr)
     {
@@ -97,6 +96,7 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
         {
             delete oldHead;
         }
+        m_size.fetch_sub(1);
     }
     //清空待删除队列
     DelteWaitQueue();
@@ -120,7 +120,7 @@ inline void LockFreeQueue<T>::push(T &&value)
     do
     {
         oldTail = m_tail.load();
-        newNode->next = oldTail;
+        oldTail->next = newNode;
     } while (!m_tail.compare_exchange_weak(oldTail, newNode));
     m_size.fetch_add(1);
 }
