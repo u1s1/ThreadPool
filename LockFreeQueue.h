@@ -65,8 +65,11 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
     
     //获取当前线程下的风险指针
     HazardPoint *thisThreadHazardPoint = m_hazardPointManager->GetHazardPoint();
+    //需要保护的当前头节点，此节点内已无可用数据，pop后被删除
     QueueNode *oldHead = m_head.load();
+    //需要保护的当前头节点，此节点内已无可用数据，用于放入风险数组
     QueueNode *tempNode;
+    //头节点的下一个节点，存放着真正需要返回的数据，pop后此节点被置为新的头节点
     QueueNode *returnNode;
     std::shared_ptr<T> dataPointer = nullptr;
 
@@ -76,11 +79,16 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
         //内层do-while用于更新风险指针
         do
         {
+            //更新头节点数据到此处
             tempNode = oldHead;
-            thisThreadHazardPoint->hazardStorePoint.store((void *)tempNode);
-            oldHead = m_head.load();
             returnNode = oldHead->next.load();
+            //更新风险指针
+            thisThreadHazardPoint->hazardStorePoint.store((void *)tempNode);
+            //获取最新头位置
+            oldHead = m_head.load();
+        //比较最新头位置和风险数组内的是不是同一个
         } while (tempNode != oldHead);
+    //若要获取数据的真正节点是空则跳出，或者成功更新头节点到要获取数据的真正节点也跳出
     } while (returnNode != nullptr && !m_head.compare_exchange_weak(oldHead, returnNode));
 
     if (returnNode != nullptr)
