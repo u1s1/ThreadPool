@@ -12,7 +12,7 @@ private:
     struct QueueNode
     {
         std::shared_ptr<T> data;
-        QueueNode* next;
+        std::atomic<QueueNode *> next;
         QueueNode() : data(nullptr), next(nullptr) {}
     };
 
@@ -52,7 +52,7 @@ template <typename T>
 inline  LockFreeQueue<T>::~LockFreeQueue()
 {
     while (pop() != nullptr);
-    delete m_tail.load();
+    delete m_head.load();
 }
 
 template <typename T>
@@ -67,6 +67,7 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
     HazardPoint *thisThreadHazardPoint = m_hazardPointManager->GetHazardPoint();
     QueueNode *oldHead = m_head.load();
     QueueNode *tempNode;
+    QueueNode *returnNode;
     std::shared_ptr<T> dataPointer = nullptr;
 
     //外层do-while用于更新队列头
@@ -78,12 +79,13 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
             tempNode = oldHead;
             thisThreadHazardPoint->hazardStorePoint.store((void *)tempNode);
             oldHead = m_head.load();
+            returnNode = oldHead->next.load();
         } while (tempNode != oldHead);
-    } while (oldHead != nullptr && !m_head.compare_exchange_weak(oldHead, oldHead->next));
+    } while (returnNode != nullptr && !m_head.compare_exchange_weak(oldHead, returnNode));
 
-    if (oldHead != nullptr)
+    if (returnNode != nullptr)
     {
-        dataPointer = std::move(oldHead->data);
+        dataPointer = std::move(returnNode->data);
         //释放此线程持有的风险指针
         thisThreadHazardPoint->hazardStorePoint.store(nullptr);
         //查看其它线程是否持有此指针
@@ -116,12 +118,27 @@ inline void LockFreeQueue<T>::push(T &&value)
 {
     QueueNode *newNode = new QueueNode();
     newNode->data = std::make_shared<T>(std::move(value));
+    newNode->next.store(nullptr);
     QueueNode *oldTail;
-    do
+    QueueNode *oldTailNext;
+    while(true)
     {
         oldTail = m_tail.load();
-        oldTail->next = newNode;
-    } while (!m_tail.compare_exchange_weak(oldTail, newNode));
+        oldTailNext = oldTail->next.load();
+        if (oldTailNext != nullptr)
+        {
+            //帮助其他线程推进尾指针
+            m_tail.compare_exchange_weak(oldTail, oldTailNext);
+            continue;
+        }
+        //更新next指针为新节点
+        if(oldTail->next.compare_exchange_weak(oldTailNext, newNode))
+        {
+            //将尾指针后移
+            m_tail.compare_exchange_weak(oldTail, newNode);
+            break;
+        }
+    }
     m_size.fetch_add(1);
 }
 
@@ -138,7 +155,7 @@ inline void LockFreeQueue<T>::AddToDeleteWaitQueue(QueueNode *waitDeletePointer)
     do
     {
         oldWaitDeleteHead = m_deleteWaitHead.load();
-        waitDeletePointer->next = oldWaitDeleteHead;
+        waitDeletePointer->next.store(oldWaitDeleteHead);
     } while (m_deleteWaitHead.compare_exchange_weak(oldWaitDeleteHead, waitDeletePointer));
 }
 
@@ -149,7 +166,7 @@ inline void LockFreeQueue<T>::DelteWaitQueue()
     QueueNode *waitDeleteHeadNext;
     while (waitDeleteHead != nullptr)
     {
-        waitDeleteHeadNext = waitDeleteHead->next;
+        waitDeleteHeadNext = waitDeleteHead->next.load();
         if (m_hazardPointManager->IsConflictPoint((void*)waitDeleteHead))
         {
             AddToDeleteWaitQueue(waitDeleteHead);
