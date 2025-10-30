@@ -58,6 +58,22 @@ public:
         return nullptr;
     }
 
+    void ReleaseHazardPoint()
+    {
+        std::thread::id thisID = std::this_thread::get_id();
+        std::thread::id emptyID;
+        for (size_t i = 0; i < m_nSize; ++i)
+        {
+            if (m_pHazardPointsArray[i].threadID.load(std::memory_order_acquire) == thisID)
+            {
+                m_pHazardPointsArray[i].hazardStorePoint[0].store(nullptr, std::memory_order_release);
+                m_pHazardPointsArray[i].hazardStorePoint[1].store(nullptr, std::memory_order_release);
+                m_pHazardPointsArray[i].threadID.store(emptyID, std::memory_order_release);
+                return;
+            }
+        }
+    }
+
     //检查此指针是否被占用
     bool IsConflictPoint(void* hazardStorePoint)
     {
