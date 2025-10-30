@@ -27,6 +27,7 @@ public:
     void push(const T &value);
     void push(T &&value);
     int size();
+    void clear();
 
 private:
     void AddToDeleteWaitQueue(QueueNode *waitDeletePointer);
@@ -177,6 +178,13 @@ template <typename T>
 inline int LockFreeQueue<T>::size()
 {
     return m_size.load(std::memory_order_acquire);
+}
+
+template <typename T>
+inline void LockFreeQueue<T>::clear()
+{
+    while (pop() != nullptr);
+    DeleteWaitQueue();
 }
 
 template <typename T>
