@@ -13,11 +13,13 @@ private:
     {
         std::shared_ptr<T> data;
         std::atomic<QueueNode *> next;
-        QueueNode() : data(nullptr), next(nullptr) {}
+        QueueNode() : data(nullptr){
+            next.store(nullptr);
+        }
     };
 
 public:
-    LockFreeQueue(int nHazardPointSize = 8);
+    LockFreeQueue(int nHazardPointSize = 16);
     ~LockFreeQueue();
 
     std::shared_ptr<T> pop();
@@ -45,7 +47,7 @@ inline  LockFreeQueue<T>::LockFreeQueue(int nHazardPointSize)
     m_tail.store(dummy);
     m_deleteWaitHead.store(nullptr);
     m_size.store(0);
-    m_hazardPointManager = std::make_shared<HazardPointManager>(nHazardPointSize);
+    m_hazardPointManager = std::make_shared<HazardPointManager>(nHazardPointSize * 2);
 }
 
 template <typename T>
@@ -58,13 +60,12 @@ inline  LockFreeQueue<T>::~LockFreeQueue()
 template <typename T>
 inline std::shared_ptr<T> LockFreeQueue<T>::pop()
 {
-    if (m_size.load() == 0)
+    //获取当前线程下的风险指针
+    HazardPoint *thisThreadHazardPoint = m_hazardPointManager->GetHazardPoint();
+    if (thisThreadHazardPoint == nullptr)
     {
         return nullptr;
     }
-    
-    //获取当前线程下的风险指针
-    HazardPoint *thisThreadHazardPoint = m_hazardPointManager->GetHazardPoint();
     //需要保护的当前头节点，此节点内已无可用数据，pop后被删除
     QueueNode *oldHead = m_head.load();
     //需要保护的当前头节点，此节点内已无可用数据，用于放入风险数组
@@ -79,11 +80,12 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
         //内层do-while用于更新风险指针
         do
         {
-            //更新头节点数据到此处
-            tempNode = oldHead;
-            returnNode = oldHead->next.load();
             //更新风险指针
-            thisThreadHazardPoint->hazardStorePoint.store((void *)tempNode);
+            thisThreadHazardPoint->hazardStorePoint[0].store((void *)m_head.load());
+            //更新头节点数据到此处
+            tempNode = (QueueNode *)thisThreadHazardPoint->hazardStorePoint[0].load();
+            returnNode = tempNode->next.load();
+            thisThreadHazardPoint->hazardStorePoint[1].store((void *)returnNode);
             //获取最新头位置
             oldHead = m_head.load();
         //比较最新头位置和风险数组内的是不是同一个
@@ -95,7 +97,8 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
     {
         dataPointer = std::move(returnNode->data);
         //释放此线程持有的风险指针
-        thisThreadHazardPoint->hazardStorePoint.store(nullptr);
+        thisThreadHazardPoint->hazardStorePoint[0].store(nullptr);
+        thisThreadHazardPoint->hazardStorePoint[1].store(nullptr);
         //查看其它线程是否持有此指针
         if (m_hazardPointManager->IsConflictPoint((void *)oldHead))
         {
@@ -111,7 +114,8 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
     else
     {
         //释放此线程持有的风险指针
-        thisThreadHazardPoint->hazardStorePoint.store(nullptr);
+        thisThreadHazardPoint->hazardStorePoint[0].store(nullptr);
+        thisThreadHazardPoint->hazardStorePoint[1].store(nullptr);
     }
     //清空待删除队列
     DelteWaitQueue();
@@ -169,7 +173,7 @@ inline void LockFreeQueue<T>::AddToDeleteWaitQueue(QueueNode *waitDeletePointer)
     {
         oldWaitDeleteHead = m_deleteWaitHead.load();
         waitDeletePointer->next.store(oldWaitDeleteHead);
-    } while (m_deleteWaitHead.compare_exchange_weak(oldWaitDeleteHead, waitDeletePointer));
+    } while (!m_deleteWaitHead.compare_exchange_weak(oldWaitDeleteHead, waitDeletePointer));
 }
 
 template <typename T>

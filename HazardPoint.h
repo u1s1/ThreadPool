@@ -7,7 +7,7 @@
 struct HazardPoint
 {
     std::atomic<std::thread::id> threadID;
-    std::atomic<void *> hazardStorePoint;
+    std::atomic<void *> hazardStorePoint[2];
 };
 
 class HazardPointManager
@@ -21,7 +21,8 @@ public:
         for (int i = 0; i < m_nSize; i++)
         {
             m_pHazardPointsArray[i].threadID.store(tempID);
-            m_pHazardPointsArray[i].hazardStorePoint.store(nullptr);
+            m_pHazardPointsArray[i].hazardStorePoint[0].store(nullptr);
+            m_pHazardPointsArray[i].hazardStorePoint[1].store(nullptr);
         }
     }
     ~HazardPointManager()
@@ -41,12 +42,14 @@ public:
             }
         }
         //为当前线程分配元素
-        std::thread::id tempID;
+        std::thread::id emptyID;
         for (size_t i = 0; i < m_nSize; i++)
         {
-            if (m_pHazardPointsArray[i].threadID.compare_exchange_weak(tempID, thisID))
+            std::thread::id expected = emptyID;
+            if (m_pHazardPointsArray[i].threadID.compare_exchange_weak(expected, thisID))
             {
-                m_pHazardPointsArray[i].hazardStorePoint.store(nullptr);
+                m_pHazardPointsArray[i].hazardStorePoint[0].store(nullptr);
+                m_pHazardPointsArray[i].hazardStorePoint[1].store(nullptr);
                 return &m_pHazardPointsArray[i];
             }
         }
@@ -58,7 +61,8 @@ public:
     {
         for (int i = 0; i < m_nSize; i++)
         {
-            if (m_pHazardPointsArray[i].hazardStorePoint.load() == hazardStorePoint)
+            if (m_pHazardPointsArray[i].hazardStorePoint[0].load() == hazardStorePoint ||
+                    m_pHazardPointsArray[i].hazardStorePoint[1].load() == hazardStorePoint)
             {
                 return true;
             }
