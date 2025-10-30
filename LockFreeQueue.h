@@ -38,6 +38,7 @@ private:
     std::atomic<QueueNode *> m_deleteWaitHead;
     std::atomic<int> m_size;
     std::shared_ptr<HazardPointManager> m_hazardPointManager;
+    std::atomic<int> m_deleteWaitCount;
 };
 
 template <typename T>
@@ -49,6 +50,7 @@ inline  LockFreeQueue<T>::LockFreeQueue(int nHazardPointSize)
     m_deleteWaitHead.store(nullptr, std::memory_order_release);
     m_size.store(0, std::memory_order_release);
     m_hazardPointManager = std::make_shared<HazardPointManager>(nHazardPointSize * 2);
+    m_deleteWaitCount.store(0, std::memory_order_release);
 }
 
 template <typename T>
@@ -131,7 +133,11 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
         thisThreadHazardPoint->hazardStorePoint[1].store(nullptr, std::memory_order_release);
     }
     //清空待删除队列
-    DeleteWaitQueue();
+    if (m_deleteWaitCount.fetch_add(1, std::memory_order_release) > 32)
+    {
+        DeleteWaitQueue();
+        m_deleteWaitCount.store(0, std::memory_order_release);
+    }
 
     return dataPointer;
 }
