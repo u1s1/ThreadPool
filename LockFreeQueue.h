@@ -80,11 +80,11 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
         //内层do-while用于更新风险指针
         do
         {
-            //更新风险指针
-            thisThreadHazardPoint->hazardStorePoint[0].store((void *)m_head.load());
             //更新头节点数据到此处
-            tempNode = (QueueNode *)thisThreadHazardPoint->hazardStorePoint[0].load();
+            tempNode = m_head.load();
             returnNode = tempNode->next.load();
+            //更新风险指针
+            thisThreadHazardPoint->hazardStorePoint[0].store((void *)tempNode);
             thisThreadHazardPoint->hazardStorePoint[1].store((void *)returnNode);
             //获取最新头位置
             oldHead = m_head.load();
