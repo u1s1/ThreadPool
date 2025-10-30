@@ -8,6 +8,12 @@ struct HazardPoint
 {
     std::atomic<std::thread::id> threadID;
     std::atomic<void *> hazardStorePoint[2];
+    HazardPoint()
+    {
+        threadID.store(std::thread::id(), std::memory_order_relaxed);
+        hazardStorePoint[0].store(nullptr, std::memory_order_relaxed);
+        hazardStorePoint[1].store(nullptr, std::memory_order_relaxed);
+    }
 };
 
 class HazardPointManager
@@ -80,7 +86,7 @@ public:
         for (int i = 0; i < m_nSize; i++)
         {
             if (m_pHazardPointsArray[i].hazardStorePoint[0].load(std::memory_order_acquire) == hazardStorePoint ||
-                    m_pHazardPointsArray[i].hazardStorePoint[1].load(std::memory_order_acquire) == hazardStorePoint)
+                m_pHazardPointsArray[i].hazardStorePoint[1].load(std::memory_order_acquire) == hazardStorePoint)
             {
                 return true;
             }

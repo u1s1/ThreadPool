@@ -13,9 +13,9 @@ private:
     {
         std::shared_ptr<T> data;
         std::atomic<QueueNode *> next;
-        QueueNode() : data(nullptr){
-            next.store(nullptr, std::memory_order_release);
-        }
+        QueueNode() : data(nullptr), next(nullptr) {}
+        explicit QueueNode(T const& value) : data(std::make_shared<T>(value)), next(nullptr) {}
+        explicit QueueNode(T&& value) : data(std::make_shared<T>(std::move(value))), next(nullptr) {}
     };
 
 public:
@@ -54,7 +54,17 @@ template <typename T>
 inline  LockFreeQueue<T>::~LockFreeQueue()
 {
     while (pop() != nullptr);
-    delete m_head.load(std::memory_order_acquire);
+    QueueNode* nDelete = m_head.load(std::memory_order_relaxed);
+    if (nDelete) delete nDelete;
+
+    nDelete = m_deleteWaitHead.exchange(nullptr, std::memory_order_acq_rel);
+    QueueNode *nextDelete;
+    while (nDelete)
+    {
+        nextDelete = nDelete->next.load(std::memory_order_relaxed);
+        delete nDelete;
+        nDelete = nextDelete;
+    }
 }
 
 template <typename T>
