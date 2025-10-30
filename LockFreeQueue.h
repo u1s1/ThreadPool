@@ -189,7 +189,7 @@ inline int LockFreeQueue<T>::size()
 template <typename T>
 inline void LockFreeQueue<T>::clear()
 {
-    while (pop() != nullptr);
+    while (pop().has_value());
     DeleteWaitQueue();
 }
 
