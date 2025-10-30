@@ -90,10 +90,9 @@ inline auto ThreadPoolLockFree::PushThread(Func&& func, Args&&... args)
 
 inline void ThreadPoolLockFree::vThreadLoop()
 {
-    std::shared_ptr<ThreadPoolTask> jobPtr;
     while (m_bRunning.load())
     {
-        ThreadPoolTask job;
+        std::optional<ThreadPoolTask> job;
         {
             std::unique_lock<std::mutex> lock(m_mutexJob);
             m_Condition.wait_for(lock, std::chrono::milliseconds(5), [this]() { return !m_bRunning.load() || m_queueJob.get()->size() != 0; });
@@ -104,13 +103,12 @@ inline void ThreadPoolLockFree::vThreadLoop()
             break;
         }
         // 获取到job后将该job从任务队列移出，免得其他worker过来重复做这个任务
-        jobPtr = std::move(m_queueJob.get()->pop());
-        if (jobPtr != nullptr)
+        job = std::move(m_queueJob.get()->pop());
+        if (job != std::nullopt)
         {
-            job = std::move(*jobPtr.get());
             m_nThreadWorkingNum.fetch_add(1);
             // 执行任务
-            job();
+            job.value()();
             m_nThreadWorkingNum.fetch_sub(1);
         }
     }
