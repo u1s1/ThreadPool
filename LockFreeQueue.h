@@ -30,7 +30,7 @@ public:
 
 private:
     void AddToDeleteWaitQueue(QueueNode *waitDeletePointer);
-    void DelteWaitQueue();
+    void DeleteWaitQueue();
 
     std::atomic<QueueNode *> m_head;
     std::atomic<QueueNode *> m_tail;
@@ -118,7 +118,7 @@ inline std::shared_ptr<T> LockFreeQueue<T>::pop()
         thisThreadHazardPoint->hazardStorePoint[1].store(nullptr);
     }
     //清空待删除队列
-    DelteWaitQueue();
+    DeleteWaitQueue();
 
     return dataPointer;
 }
@@ -177,7 +177,7 @@ inline void LockFreeQueue<T>::AddToDeleteWaitQueue(QueueNode *waitDeletePointer)
 }
 
 template <typename T>
-inline void LockFreeQueue<T>::DelteWaitQueue()
+inline void LockFreeQueue<T>::DeleteWaitQueue()
 {
     QueueNode *waitDeleteHead = m_deleteWaitHead.exchange(nullptr);
     QueueNode *waitDeleteHeadNext;
