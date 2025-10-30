@@ -20,9 +20,9 @@ public:
         std::thread::id tempID;
         for (int i = 0; i < m_nSize; i++)
         {
-            m_pHazardPointsArray[i].threadID.store(tempID);
-            m_pHazardPointsArray[i].hazardStorePoint[0].store(nullptr);
-            m_pHazardPointsArray[i].hazardStorePoint[1].store(nullptr);
+            m_pHazardPointsArray[i].threadID.store(tempID, std::memory_order_release);
+            m_pHazardPointsArray[i].hazardStorePoint[0].store(nullptr, std::memory_order_release);
+            m_pHazardPointsArray[i].hazardStorePoint[1].store(nullptr, std::memory_order_release);
         }
     }
     ~HazardPointManager()
@@ -36,7 +36,7 @@ public:
         std::thread::id thisID = std::this_thread::get_id();
         for (size_t i = 0; i < m_nSize; i++)
         {
-            if (m_pHazardPointsArray[i].threadID.load() == thisID)
+            if (m_pHazardPointsArray[i].threadID.load(std::memory_order_acquire) == thisID)
             {
                 return &m_pHazardPointsArray[i];
             }
@@ -46,10 +46,12 @@ public:
         for (size_t i = 0; i < m_nSize; i++)
         {
             std::thread::id expected = emptyID;
-            if (m_pHazardPointsArray[i].threadID.compare_exchange_weak(expected, thisID))
+            if (m_pHazardPointsArray[i].threadID.compare_exchange_strong(expected, thisID,
+                                                          std::memory_order_acq_rel,
+                                                          std::memory_order_relaxed))
             {
-                m_pHazardPointsArray[i].hazardStorePoint[0].store(nullptr);
-                m_pHazardPointsArray[i].hazardStorePoint[1].store(nullptr);
+                m_pHazardPointsArray[i].hazardStorePoint[0].store(nullptr, std::memory_order_release);
+                m_pHazardPointsArray[i].hazardStorePoint[1].store(nullptr, std::memory_order_release);
                 return &m_pHazardPointsArray[i];
             }
         }
@@ -61,8 +63,8 @@ public:
     {
         for (int i = 0; i < m_nSize; i++)
         {
-            if (m_pHazardPointsArray[i].hazardStorePoint[0].load() == hazardStorePoint ||
-                    m_pHazardPointsArray[i].hazardStorePoint[1].load() == hazardStorePoint)
+            if (m_pHazardPointsArray[i].hazardStorePoint[0].load(std::memory_order_acquire) == hazardStorePoint ||
+                    m_pHazardPointsArray[i].hazardStorePoint[1].load(std::memory_order_acquire) == hazardStorePoint)
             {
                 return true;
             }
