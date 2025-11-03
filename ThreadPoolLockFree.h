@@ -90,9 +90,9 @@ inline auto ThreadPoolLockFree::PushThread(Func&& func, Args&&... args)
 
 inline void ThreadPoolLockFree::vThreadLoop()
 {
+    std::optional<ThreadPoolTask> job;
     while (m_bRunning.load())
     {
-        std::optional<ThreadPoolTask> job;
         {
             std::unique_lock<std::mutex> lock(m_mutexJob);
             m_Condition.wait_for(lock, std::chrono::milliseconds(5), [this]() { return !m_bRunning.load() || m_queueJob.get()->size() != 0; });
@@ -111,6 +111,7 @@ inline void ThreadPoolLockFree::vThreadLoop()
             job.value()();
             m_nThreadWorkingNum.fetch_sub(1);
         }
+        job.reset();
     }
 }
 
