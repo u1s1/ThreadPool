@@ -74,6 +74,10 @@ template <typename Func, typename... Args>
 inline auto ThreadPoolLockFree::PushThread(Func&& func, Args&&... args) 
         -> std::future<typename std::result_of<Func(Args...)>::type>
     {
+        while (m_queueJob->size() > 10000) 
+        {
+            std::this_thread::yield();
+        }
         using ReturnType = typename std::result_of<Func(Args...)>::type;
         using TaskType = std::packaged_task<ReturnType()>;
         

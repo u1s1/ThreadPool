@@ -4,7 +4,7 @@
 #include<atomic>
 #include<thread>
 
-struct HazardPoint
+struct alignas(64) HazardPoint
 {
     std::atomic<std::thread::id> threadID;
     std::atomic<void *> hazardStorePoint[2];
