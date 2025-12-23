@@ -135,10 +135,9 @@ inline std::optional<T> LockFreeQueue<T>::pop()
         thisThreadHazardPoint->hazardStorePoint[1].store(nullptr, std::memory_order_release);
     }
     //清空待删除队列
-    if (m_deleteWaitCount.fetch_add(1, std::memory_order_release) > 32)
+    if (m_deleteWaitCount.fetch_add(1, std::memory_order_release) > 128)
     {
         DeleteWaitQueue();
-        m_deleteWaitCount.store(0, std::memory_order_release);
     }
 
     return dataOptional;
@@ -211,6 +210,10 @@ inline void LockFreeQueue<T>::DeleteWaitQueue()
 {
     QueueNode *waitDeleteHead = m_deleteWaitHead.exchange(nullptr);
     QueueNode *waitDeleteHeadNext;
+    if (waitDeleteHead == nullptr)
+        return;
+
+    m_deleteWaitCount.store(0, std::memory_order_release);
     while (waitDeleteHead != nullptr)
     {
         waitDeleteHeadNext = waitDeleteHead->next.load(std::memory_order_acquire);
